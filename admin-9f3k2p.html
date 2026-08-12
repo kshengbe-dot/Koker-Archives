@@ -142,6 +142,37 @@
       .kpiGrid{grid-template-columns: 1fr 1fr}
       .right{max-width:74vw;}
     }
+
+    .tabBar{
+      display:flex; gap:8px; flex-wrap:wrap;
+      margin-top:16px; padding:6px;
+      border:1px solid var(--stroke);
+      background: rgba(255,255,255,.04);
+      border-radius:18px;
+      position:sticky; top:56px; z-index:40;
+      backdrop-filter: blur(10px);
+    }
+    [data-theme="light"] .tabBar{ background: rgba(2,6,23,.03); }
+    .tabBtn2{
+      flex:1 1 auto; text-align:center;
+      padding:10px 14px; border-radius:14px;
+      font-weight:900; font-size:13px; letter-spacing:.04em; text-transform:uppercase;
+      color:var(--muted); cursor:pointer; user-select:none;
+      transition: background .15s ease, color .15s ease;
+      white-space:nowrap;
+    }
+    .tabBtn2:hover{ background: rgba(255,255,255,.06); }
+    .tabBtn2.active{
+      color:var(--ink);
+      background: rgba(124,92,255,.20);
+      border:1px solid rgba(124,92,255,.45);
+    }
+    .tabPanel{ display:none; }
+    .tabPanel.active{ display:block; }
+    @media (max-width:980px){
+      .tabBar{ top:0; }
+      .tabBtn2{ font-size:11px; padding:9px 8px; }
+    }
   </style>
 </head>
 <body>
@@ -236,12 +267,23 @@
       </div>
     </div>
 
+    <div class="tabBar" id="tabBar">
+      <div class="tabBtn2 active" data-tab="books">📘 Books</div>
+      <div class="tabBtn2" data-tab="chapters">📝 Chapters</div>
+      <div class="tabBtn2" data-tab="announcements">📣 Announcements</div>
+      <div class="tabBtn2" data-tab="stats">📊 Stats</div>
+    </div>
+
   <!-- ✅ Create Book --> 
 
+  <!-- ✅ Create Book --> 
+
+    <div class="locked" id="adminApp">
+
+    <div class="tabPanel active" data-tabpanel="books">
+
   <div class="card">
-    <h1>Publish Chapter (paste text → auto-format)</h1>
-    <div class="card">
-  <h1>Create Book</h1>
+    <h1>Create Book</h1>
 
   <div class="small">
     Create a new book with front and back covers. This will appear in your Library page.
@@ -279,8 +321,6 @@
     <div class="small" id="createBookMsg"></div>
   </div>
 </div>
-    
-    <div class="locked" id="adminApp">
 
       <!-- ✅ NEW BADGE CONTROLLER -->
       <div class="card">
@@ -341,6 +381,10 @@
 
         <div class="preview" id="nbState" style="margin-top:12px;">—</div>
       </div>
+
+    </div><!-- /tabPanel books -->
+
+    <div class="tabPanel" data-tabpanel="announcements">
 
       <div class="card">
         <h1>Release Tools (Premium)</h1>
@@ -428,6 +472,10 @@
         </div>
       </div>
 
+    </div><!-- /tabPanel announcements (part 1) -->
+
+    <div class="tabPanel" data-tabpanel="stats">
+
       <div class="card">
         <h1>Backfill (Count Past Readers)</h1>
         <div class="small">
@@ -455,6 +503,10 @@
           <div class="small" id="baseMsg"></div>
         </div>
       </div>
+
+    </div><!-- /tabPanel stats (part 1) -->
+
+    <div class="tabPanel" data-tabpanel="chapters">
 
       <div class="card">
         <h1>Publish Chapter (paste text → auto-format)</h1>
@@ -532,6 +584,10 @@ Use **bold** for bold."></textarea>
         <div class="preview" id="chaptersList" style="margin-top:10px;">—</div>
       </div>
 
+    </div><!-- /tabPanel chapters -->
+
+    <div class="tabPanel" data-tabpanel="announcements">
+
       <div class="card">
         <h1>Announcements</h1>
         <div class="small">
@@ -570,6 +626,10 @@ Use **bold** for bold."></textarea>
         <div class="preview" id="announceList" style="margin-top:10px;">—</div>
       </div>
 
+    </div><!-- /tabPanel announcements (part 2) -->
+
+    <div class="tabPanel" data-tabpanel="stats">
+
       <div class="card">
         <h1>Subscribers (Private)</h1>
         <div class="small">Only you (admin) can see subscriber list + count.</div>
@@ -581,6 +641,10 @@ Use **bold** for bold."></textarea>
 
         <div class="preview" id="subsList" style="margin-top:10px;">—</div>
       </div>
+
+    </div><!-- /tabPanel stats (part 2) -->
+
+    <div class="tabPanel" data-tabpanel="announcements">
 
       <div class="card">
         <h1>Moderate Comments</h1>
@@ -603,6 +667,8 @@ Use **bold** for bold."></textarea>
 
         <div class="preview" id="commentsAdmin" style="margin-top:10px;">—</div>
       </div>
+
+    </div><!-- /tabPanel announcements (part 3) -->
 
     </div>
   </div>
@@ -1753,6 +1819,27 @@ createBookBtn.onclick = async () => {
   }
 };
     
+  </script>
+
+  <script>
+    // Tab bar switching (plain script, independent of the module above)
+    (function initTabs(){
+      const tabBtns = Array.from(document.querySelectorAll(".tabBtn2"));
+      const panels = Array.from(document.querySelectorAll(".tabPanel"));
+
+      function activate(tabName){
+        tabBtns.forEach(b => b.classList.toggle("active", b.dataset.tab === tabName));
+        panels.forEach(p => p.classList.toggle("active", p.dataset.tabpanel === tabName));
+        try{ localStorage.setItem("koker_admin_tab", tabName); }catch{}
+      }
+
+      tabBtns.forEach(btn=>{
+        btn.addEventListener("click", () => activate(btn.dataset.tab));
+      });
+
+      const saved = (() => { try{ return localStorage.getItem("koker_admin_tab"); }catch{ return null; } })();
+      activate(saved && tabBtns.some(b => b.dataset.tab === saved) ? saved : "books");
+    })();
   </script>
 </body>
 </html>
