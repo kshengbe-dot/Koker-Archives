@@ -483,12 +483,16 @@
     <div class="row">
       <div class="chip" id="prevBtn">Prev</div>
       <div class="chip" id="nextBtn">Next</div>
+      <div class="chip" id="listenBtn">🔊 <strong>Listen</strong></div>
+      <div class="chip" id="voiceBtn" title="Switch narrator voice">🎙️ <strong id="voiceLabel">Female</strong></div>
     </div>
   </div>
 
   <!-- Mobile bottom -->
   <div class="mBottom">
     <div class="mBtn" id="mPrev">Prev</div>
+    <div class="mBtn" id="mListen">🔊 Listen</div>
+    <div class="mBtn" id="mVoice">🎙️ <span id="mVoiceLabel">Female</span></div>
     <div class="mBtn" id="mNext">Next</div>
   </div>
 
@@ -1218,6 +1222,167 @@
       PAGES = paginate(BOOK_HTML);
       render();
     }
+
+    // ---------------- AI READ-ALOUD (male/female voice toggle) ----------------
+    (function initReadAloud(){
+      const synth = window.speechSynthesis;
+      if(!synth){
+        ["listenBtn","voiceBtn","mListen","mVoice"].forEach(id=>{
+          const el = document.getElementById(id);
+          if(el) el.style.display = "none";
+        });
+        return;
+      }
+
+      let voices = [];
+      let voiceGender = localStorage.getItem("koker_voice_gender") || "female"; // "female" | "male"
+      let isSpeaking = false;
+      let isPaused = false;
+      let autoAdvance = false; // continue to next page after utterance ends
+
+      const FEMALE_HINTS = ["female","samantha","victoria","zira","susan","fiona","tessa","karen","moira","serena","ava","allison","kate","salli","joanna","aria"];
+      const MALE_HINTS   = ["male","daniel","fred","alex","david","mark","tom","james","george","guy","matthew","brian","eric"];
+
+      function loadVoices(){
+        voices = synth.getVoices() || [];
+      }
+      loadVoices();
+      if(typeof synth.onvoiceschanged !== "undefined"){
+        synth.onvoiceschanged = loadVoices;
+      }
+
+      function scoreVoice(v, hints){
+        const name = (v.name || "").toLowerCase();
+        return hints.some(h => name.includes(h)) ? 1 : 0;
+      }
+
+      function pickVoice(gender){
+        if(!voices.length) loadVoices();
+        const enVoices = voices.filter(v => (v.lang || "").toLowerCase().startsWith("en"));
+        const pool = enVoices.length ? enVoices : voices;
+        const hints = gender === "male" ? MALE_HINTS : FEMALE_HINTS;
+        const scored = pool.map(v => ({ v, s: scoreVoice(v, hints) })).sort((a,b)=> b.s - a.s);
+        if(scored.length && scored[0].s > 0) return scored[0].v;
+        // Fallback: alternate by index parity so male/female at least differ when no named match exists
+        if(pool.length >= 2){
+          return gender === "male" ? pool[1] : pool[0];
+        }
+        return pool[0] || null;
+      }
+
+      function htmlToPlainText(html){
+        const tmp = document.createElement("div");
+        tmp.innerHTML = html || "";
+        return (tmp.textContent || tmp.innerText || "").replace(/\s+/g, " ").trim();
+      }
+
+      function updateVoiceLabels(){
+        const label = voiceGender === "male" ? "Male" : "Female";
+        const a = document.getElementById("voiceLabel");
+        const b = document.getElementById("mVoiceLabel");
+        if(a) a.textContent = label;
+        if(b) b.textContent = label;
+      }
+
+      function updateListenLabels(){
+        const txt = isSpeaking && !isPaused ? "⏸ Pause" : "🔊 Listen";
+        const listenBtn = document.getElementById("listenBtn");
+        const mListen = document.getElementById("mListen");
+        if(listenBtn) listenBtn.innerHTML = txt.includes("Pause") ? "⏸ <strong>Pause</strong>" : "🔊 <strong>Listen</strong>";
+        if(mListen) mListen.textContent = txt;
+      }
+
+      function stopSpeaking(){
+        autoAdvance = false;
+        isSpeaking = false;
+        isPaused = false;
+        synth.cancel();
+        updateListenLabels();
+      }
+
+      function speakCurrentPage(continueReading){
+        if(!PAGES.length) return;
+        synth.cancel();
+        const text = htmlToPlainText(PAGES[i]);
+        if(!text){
+          if(continueReading) advanceAndSpeak();
+          return;
+        }
+        const utter = new SpeechSynthesisUtterance(text);
+        const v = pickVoice(voiceGender);
+        if(v) utter.voice = v;
+        utter.rate = 1;
+        utter.pitch = voiceGender === "male" ? 0.92 : 1.05;
+
+        utter.onstart = () => { isSpeaking = true; isPaused = false; updateListenLabels(); };
+        utter.onend = () => {
+          isSpeaking = false;
+          updateListenLabels();
+          if(autoAdvance) advanceAndSpeak();
+        };
+        utter.onerror = () => { isSpeaking = false; updateListenLabels(); };
+
+        synth.speak(utter);
+      }
+
+      function advanceAndSpeak(){
+        const isMob = isMobile();
+        const step = isMob ? 1 : 2;
+        if(i + step <= PAGES.length - 1){
+          i = i + step;
+          render();
+          speakCurrentPage(true);
+        }else{
+          autoAdvance = false;
+        }
+      }
+
+      function toggleListen(){
+        if(isSpeaking && !isPaused){
+          synth.pause();
+          isPaused = true;
+          updateListenLabels();
+          return;
+        }
+        if(isPaused){
+          synth.resume();
+          isPaused = false;
+          updateListenLabels();
+          return;
+        }
+        autoAdvance = true;
+        speakCurrentPage(true);
+      }
+
+      function toggleVoiceGender(){
+        voiceGender = voiceGender === "male" ? "female" : "male";
+        localStorage.setItem("koker_voice_gender", voiceGender);
+        updateVoiceLabels();
+        if(isSpeaking) speakCurrentPage(autoAdvance); // restart current page in new voice
+      }
+
+      // Stop narration if the reader navigates manually
+      const origNext = next, origPrev = prev;
+      window.__kokerStopReadAloud = stopSpeaking;
+
+      ["listenBtn","mListen"].forEach(id=>{
+        const el = document.getElementById(id);
+        if(el) el.addEventListener("click", toggleListen);
+      });
+      ["voiceBtn","mVoice"].forEach(id=>{
+        const el = document.getElementById(id);
+        if(el) el.addEventListener("click", toggleVoiceGender);
+      });
+
+      document.getElementById("nextBtn")?.addEventListener("click", stopSpeaking);
+      document.getElementById("prevBtn")?.addEventListener("click", stopSpeaking);
+      document.getElementById("mNext")?.addEventListener("click", stopSpeaking);
+      document.getElementById("mPrev")?.addEventListener("click", stopSpeaking);
+
+      window.addEventListener("beforeunload", () => synth.cancel());
+      updateVoiceLabels();
+      updateListenLabels();
+    })();
 
     // COMMUNITY MODAL WIRING
     const communityModal = document.getElementById("communityModal");
