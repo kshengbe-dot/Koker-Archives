@@ -406,14 +406,27 @@
     }
     .cover{
       height: 210px;
-      background: rgba(0,0,0,.18);
+      perspective: 1200px;
       border-bottom:1px solid var(--stroke);
-      display:flex;
-      align-items:center;
-      justify-content:center;
+      overflow:hidden;
+      position:relative;
+    }
+    .coverInner{
+      position:relative;
+      width:100%; height:100%;
+      transform-style: preserve-3d;
+      transition: transform .7s cubic-bezier(.2,.8,.2,1);
+    }
+    .bookCard.flipped .coverInner{ transform: rotateY(180deg); }
+    .coverFace{
+      position:absolute; inset:0;
+      backface-visibility:hidden;
+      -webkit-backface-visibility:hidden;
+      background: rgba(0,0,0,.18);
+      display:flex; align-items:center; justify-content:center;
       overflow:hidden;
     }
-    .cover img{
+    .coverFace img{
       width:100%;
       height:100%;
       object-fit:cover;
@@ -421,8 +434,39 @@
       transition: transform .22s ease;
       display:block;
     }
-    .bookCard:hover .cover img{ transform: scale(1.06); }
+    .bookCard:hover .coverFace img{ transform: scale(1.06); }
+    .coverBack{ transform: rotateY(180deg); }
+    .coverBackFallback{
+      width:100%; height:100%;
+      display:flex; flex-direction:column; align-items:center; justify-content:center;
+      text-align:center; padding:14px;
+      background: radial-gradient(600px 400px at 50% 0%, var(--glow), transparent 60%), var(--card);
+    }
+    .coverBackFallback .cbfTitle{ font-weight:950; font-size:15px; letter-spacing:.02em; }
+    .coverBackFallback .cbfSeries{
+      margin-top:6px; font-size:11px; color:var(--muted);
+      text-transform:uppercase; letter-spacing:.1em; font-weight:800;
+    }
+    .flipBtn{
+      position:absolute; z-index:5; right:10px; bottom:10px;
+      width:34px; height:34px; border-radius:50%;
+      display:flex; align-items:center; justify-content:center;
+      background: rgba(0,0,0,.45); backdrop-filter: blur(6px);
+      border:1px solid rgba(255,255,255,.25);
+      color:#fff; font-size:16px; line-height:1; cursor:pointer;
+      transition: transform .18s ease, background .18s ease;
+    }
+    .flipBtn:hover{ background: rgba(124,92,255,.6); transform: scale(1.1); }
+    .flipBtn:active{ transform: scale(.95); }
     .meta{ padding:12px 12px 14px; }
+    .meta .seriesTag{
+      display:inline-block; margin:0 0 6px;
+      padding:3px 9px; border-radius:999px;
+      font-size:11px; font-weight:900; letter-spacing:.06em; text-transform:uppercase;
+      color: var(--accent);
+      border:1px solid rgba(124,92,255,.4);
+      background: rgba(124,92,255,.12);
+    }
     .meta .name{ font-weight:950; margin:0; font-size:15px; line-height:1.2; }
     .meta .desc{ margin:6px 0 0; color:var(--muted); font-size:13px; line-height:1.45; }
 
@@ -692,46 +736,7 @@
     </div>
 
    <div class="shelf" id="booksGrid">
-      <div class="bookCard" id="book1Card" role="button" aria-label="Open Book I" data-book="book1" data-title="THIS IS US Book I Where We Began">
-        <div class="badge live">Live</div>
-        <div class="badge new" id="newBadge_book1" style="display:none">NEW</div>
-        <div class="cover"><img src="./assets/cover-book1.png" alt="Book 1 Cover"></div>
-        <div class="meta">
-          <p class="name">THIS IS US (Book I) — Where We Began</p>
-          <p class="desc">Mukeh arrives. Francess is the standard. Awareness begins.</p>
-        </div>
-        <button class="favBtn" id="favBtn_book1" type="button" title="Favorite">☆ Favorite</button>
-      </div>
-
-      <div class="bookCard" id="book2Card" role="button" aria-label="Coming soon book" data-book="coming" data-title="THIS IS US Book II Coming Soon">
-        <div class="badge soon">Coming Soon</div>
-        <div class="cover"><img src="./assets/back-book1.png" alt="Coming Soon"></div>
-        <div class="meta">
-          <p class="name">THIS IS US Book II — Coming Soon</p>
-          <p class="desc">A new season is loading. New pressure. New cost. New choices.</p>
-        </div>
-        <button class="favBtn" id="favBtn_coming" type="button" title="Favorite">☆ Favorite</button>
-      </div>
-
-      <div class="bookCard" id="book3Card" role="button" aria-label="Coming soon book" data-book="coming" data-title="THIS IS US Book III Coming Soon">
-        <div class="badge soon">Coming Soon</div>
-        <div class="cover"><img src="./assets/back-book1.png" alt="Coming Soon"></div>
-        <div class="meta">
-          <p class="name">THIS IS US Book III — Coming Soon</p>
-          <p class="desc">Some friendships become fault lines. Some love becomes a mirror.</p>
-        </div>
-        <button class="favBtn" id="favBtn_coming3" type="button" title="Favorite">☆ Favorite</button>
-      </div>
-
-      <div class="bookCard" id="book4Card" role="button" aria-label="Coming soon book" data-book="coming" data-title="Book IV Coming Soon">
-        <div class="badge soon">Coming Soon</div>
-        <div class="cover"><img src="./assets/back-book1.png" alt="Coming Soon"></div>
-        <div class="meta">
-          <p class="name">Book IV — Coming Soon</p>
-          <p class="desc">The past returns. The narrative changes. The costs rise.</p>
-        </div>
-        <button class="favBtn" id="favBtn_coming4" type="button" title="Favorite">☆ Favorite</button>
-      </div>
+      <div class="small" id="shelfLoading" style="padding:16px;">Loading books…</div>
     </div>
   </div>
 
@@ -933,10 +938,6 @@
     const openSubscribeQuick = document.getElementById("openSubscribeQuick");
 
     document.getElementById("openBook1").addEventListener("click", ()=> openBook("book1"));
-    document.getElementById("book1Card").addEventListener("click", ()=> openBook("book1"));
-    document.getElementById("book2Card").addEventListener("click", ()=> openBook("coming"));
-    document.getElementById("book3Card").addEventListener("click", ()=> openBook("coming"));
-    document.getElementById("book4Card").addEventListener("click", ()=> openBook("coming"));
 
     document.getElementById("openCommunityQuick").addEventListener("click", ()=>{
       location.href = "read.html?book=book1&open=community";
@@ -949,6 +950,7 @@
 
     function openBook(bookId){
       trackHistory(bookId).catch(()=>{});
+      document.getElementById(`card_${bookId}`)?.classList.remove("flipped");
       location.href = `read.html?book=${encodeURIComponent(bookId)}`;
     }
 
@@ -1439,21 +1441,21 @@
       }
     }
 
-    async function updateNewBadges(){
-      const badge = document.getElementById("newBadge_book1");
+    async function updateSingleNewBadge(bookId){
+      const badge = document.getElementById(`newBadge_${bookId}`);
       if(!badge) return;
 
-      const rel = await getActiveRelease("book1");
+      const rel = await getActiveRelease(bookId);
       if(rel){
         badge.textContent = rel.label;
         badge.style.display = "block";
-        dbg("badge SHOWN via releases", rel.label);
+        dbg("badge SHOWN via releases", bookId, rel.label);
         return;
       }
 
       try{
-        const latest = await getLatestChapterNumber("book1");
-        dbg("fallback latest chapter", latest);
+        const latest = await getLatestChapterNumber(bookId);
+        dbg("fallback latest chapter", bookId, latest);
 
         if(latest <= 0){
           badge.style.display = "none";
@@ -1462,36 +1464,153 @@
 
         let seen = 0;
         if(UID){
-          seen = await getLastSeenChapterSignedIn("book1", UID);
+          seen = await getLastSeenChapterSignedIn(bookId, UID);
         }else{
-          seen = Number(localStorage.getItem("lastSeenChapter:book1") || "0") || 0;
+          seen = Number(localStorage.getItem(`lastSeenChapter:${bookId}`) || "0") || 0;
         }
 
-        dbg("fallback seen", seen);
+        dbg("fallback seen", bookId, seen);
 
         if(latest > seen){
           badge.textContent = "NEW";
           badge.style.display = "block";
-          dbg("badge SHOWN via fallback");
+          dbg("badge SHOWN via fallback", bookId);
         }else{
           badge.style.display = "none";
-          dbg("badge hidden (no new)");
+          dbg("badge hidden (no new)", bookId);
         }
       }catch(e){
         badge.style.display = "none";
-        dbg("fallback failed", e);
+        dbg("fallback failed", bookId, e);
       }
+    }
+
+    async function updateNewBadges(){
+      if(!BOOKS.length) return;
+      await Promise.all(BOOKS.map(b => updateSingleNewBadge(b.id).catch(()=>{})));
     }
 
     const favStrip = document.getElementById("favStrip");
     const favRow = document.getElementById("favRow");
 
-    const BOOKS = [
-      { id:"book1", title:"THIS IS US (Book I) — Where We Began", desc:"Mukeh arrives. Francess is the standard.", cover:"./assets/cover-book1.png", href:"read.html?book=book1" },
-      { id:"coming", title:"THIS IS US Book II — Coming Soon", desc:"A new season is loading.", cover:"./assets/back-book1.png", href:"read.html?book=coming" },
-      { id:"coming3", title:"THIS IS US Book III — Coming Soon", desc:"Fault lines. Mirrors.", cover:"./assets/back-book1.png", href:"read.html?book=coming" },
-      { id:"coming4", title:"Book IV — Coming Soon", desc:"The past returns.", cover:"./assets/back-book1.png", href:"read.html?book=coming" },
-    ];
+    let BOOKS = [];
+
+    function toRomanNumeral(num){
+      const map = [[10,"X"],[9,"IX"],[5,"V"],[4,"IV"],[1,"I"]];
+      let res = "", n = num;
+      for(const [v,s] of map){ while(n >= v){ res += s; n -= v; } }
+      return res || String(num);
+    }
+
+    function bookCardHTML(b){
+      const seriesTagHTML = b.seriesLabel
+        ? `<div class="seriesTag">${escapeHtml(b.seriesLabel)}</div>`
+        : "";
+      const backFaceHTML = b.backCover
+        ? `<img src="${escapeHtml(b.backCover)}" alt="${escapeHtml(b.title)} back cover" loading="lazy">`
+        : `<div class="coverBackFallback">
+             <div class="cbfTitle">${escapeHtml(b.title)}</div>
+             ${b.seriesLabel ? `<div class="cbfSeries">${escapeHtml(b.seriesLabel)}</div>` : ""}
+           </div>`;
+      return `
+        <div class="bookCard" id="card_${escapeHtml(b.id)}" role="button" aria-label="Open ${escapeHtml(b.title)}" data-book="${escapeHtml(b.id)}" data-title="${escapeHtml(b.title)}">
+          <div class="badge live">Live</div>
+          <div class="badge new" id="newBadge_${escapeHtml(b.id)}" style="display:none">NEW</div>
+          <div class="cover">
+            <div class="coverInner">
+              <div class="coverFace coverFront"><img src="${escapeHtml(b.cover)}" alt="${escapeHtml(b.title)} front cover" loading="lazy"></div>
+              <div class="coverFace coverBack">${backFaceHTML}</div>
+            </div>
+            <button type="button" class="flipBtn" id="flipBtn_${escapeHtml(b.id)}" title="Flip cover" aria-label="Flip cover to see the back">⟲</button>
+          </div>
+          <div class="meta">
+            ${seriesTagHTML}
+            <p class="name">${escapeHtml(b.title)}</p>
+            <p class="desc">${escapeHtml(b.desc)}</p>
+          </div>
+          <button class="favBtn" id="favBtn_${escapeHtml(b.id)}" type="button" title="Favorite">☆ Favorite</button>
+        </div>
+      `;
+    }
+
+    // Book I stays exactly as it always has — static assets, no admin dependency.
+    // If it's ever migrated into Firestore (a "books/book1" doc created in Admin),
+    // that real doc takes over automatically and this fallback is ignored.
+    const STATIC_BOOK1_FALLBACK = {
+      id: "book1",
+      title: "THIS IS US (Book I) — Where We Began",
+      description: "Mukeh arrives. Francess is the standard. Awareness begins.",
+      frontCover: "./assets/cover-book1.png",
+      seriesOrder: 1,
+      seriesLabel: "Book I"
+    };
+
+    async function loadBooksAndRender(){
+      const grid = document.getElementById("booksGrid");
+      try{
+        const snap = await getDocs(collection(db, "books"));
+        const docsArr = [];
+        snap.forEach(d => docsArr.push({ id: d.id, ...(d.data() || {}) }));
+
+        if(!docsArr.some(d => d.id === "book1")){
+          docsArr.push(STATIC_BOOK1_FALLBACK);
+        }
+
+        docsArr.sort((a, b) => {
+          const ao = Number.isFinite(a.seriesOrder) ? a.seriesOrder : Infinity;
+          const bo = Number.isFinite(b.seriesOrder) ? b.seriesOrder : Infinity;
+          if(ao !== bo) return ao - bo;
+          const at = a.createdAt?.toMillis ? a.createdAt.toMillis() : 0;
+          const bt = b.createdAt?.toMillis ? b.createdAt.toMillis() : 0;
+          return at - bt;
+        });
+
+        if(!docsArr.length){
+          grid.innerHTML = `<div class="small" style="padding:16px;">No books published yet — add your first book from the Admin dashboard.</div>`;
+          BOOKS = [];
+          return;
+        }
+
+        BOOKS = docsArr.map(d => ({
+          id: d.id,
+          title: d.title || d.id,
+          desc: d.description || "",
+          cover: d.frontCover || "./assets/back-book1.png",
+          backCover: d.backCover || "",
+          href: `read.html?book=${encodeURIComponent(d.id)}`,
+          seriesOrder: Number.isFinite(d.seriesOrder) ? d.seriesOrder : null,
+          seriesLabel: d.seriesLabel || (Number.isFinite(d.seriesOrder) ? `Book ${toRomanNumeral(d.seriesOrder)}` : null),
+        }));
+
+        grid.innerHTML = BOOKS.map(bookCardHTML).join("");
+
+        BOOKS.forEach(b => {
+          const card = document.getElementById(`card_${b.id}`);
+          if(card){
+            card.addEventListener("click", () => openBook(b.id));
+          }
+          const favBtn = document.getElementById(`favBtn_${b.id}`);
+          if(favBtn){
+            favBtn.addEventListener("click", (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              toggleFavorite(b.id).catch(()=>{});
+            });
+          }
+          const flipBtn = document.getElementById(`flipBtn_${b.id}`);
+          if(flipBtn){
+            flipBtn.addEventListener("click", (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              card?.classList.toggle("flipped");
+            });
+          }
+        });
+      }catch(e){
+        console.error("loadBooksAndRender failed", e);
+        grid.innerHTML = `<div class="small" style="padding:16px;">Couldn't load books right now — please refresh.</div>`;
+      }
+    }
 
     let favoritesMap = {};
 
@@ -1582,18 +1701,7 @@
       await setDoc(ref, { history: trimmed, updatedAt: serverTimestamp() }, { merge:true });
     }
 
-    BOOKS.forEach(b=>{
-      const btn = document.getElementById(`favBtn_${b.id}`);
-      if(btn){
-        btn.addEventListener("click", (e)=>{
-          e.preventDefault();
-          e.stopPropagation();
-          toggleFavorite(b.id).catch(()=>{});
-        });
-      }
-    });
-
-    const shelf = document.getElementById("shelf");
+    const shelf = document.getElementById("booksGrid");
     const searchBooks = document.getElementById("searchBooks");
     const showAllBtn = document.getElementById("showAllBtn");
 
@@ -1610,10 +1718,12 @@
     showAllBtn.addEventListener("click", ()=>{ searchBooks.value=""; applySearch(); });
 
     (async ()=>{
+      await loadBooksAndRender().catch((e)=> dbg("loadBooksAndRender init failed", e));
       await loadPreview().catch(()=>{});
       await loadAnnouncementsTab().catch(()=>{});
       await loadReadersTotal().catch(()=>{});
       await updateNewBadges().catch((e)=> dbg("updateNewBadges init failed", e));
+      await loadFavorites().catch(()=>{});
       maybeShowSubscribePopup();
 
       document.addEventListener("visibilitychange", ()=>{
