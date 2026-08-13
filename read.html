@@ -470,6 +470,12 @@
     </div>
   </div>
 
+  <div id="mSeriesNavRow" style="display:none; gap:8px; padding:8px 12px; justify-content:center; flex-wrap:wrap;">
+    <div class="mBtn" id="mSeriesPrevChip" style="display:none;"></div>
+    <div class="mBtn" style="opacity:.6;" id="mSeriesCurrentChip"></div>
+    <div class="mBtn" id="mSeriesNextChip" style="display:none;"></div>
+  </div>
+
   <!-- Desktop top -->
   <div class="top">
     <div class="row">
@@ -479,6 +485,11 @@
       <div class="chip" id="themeBtn">Theme</div>
       <div class="chip" id="communityBtn">💬 <strong>Community</strong></div>
       <div class="chip" id="syncChip"><span id="syncDot">●</span> <strong id="syncText">Guest</strong></div>
+    </div>
+    <div class="row" id="seriesNavRow" style="display:none;">
+      <div class="chip" id="seriesPrevChip" style="display:none;"></div>
+      <div class="chip" style="opacity:.6; cursor:default;" id="seriesCurrentChip"></div>
+      <div class="chip" id="seriesNextChip" style="display:none;"></div>
     </div>
     <div class="row">
       <div class="chip" id="prevBtn">Prev</div>
@@ -735,7 +746,10 @@
 
     const params = new URLSearchParams(location.search);
     const bookId = params.get("book") || "book1";
-    const bookFile = BOOK_FILES[bookId] || BOOK_FILES.coming;
+    // Books with a hand-authored static file use it as a base; every other book
+    // (including anything created later in Admin) starts empty and is built
+    // entirely from its cloud-published chapters below.
+    const bookFile = BOOK_FILES[bookId] || null;
 
     document.getElementById("bookTitle").textContent = bookId;
     document.getElementById("mBookTitle").textContent = bookId;
@@ -893,13 +907,16 @@
     let PAGES = [];
 
     async function loadBook(){
+      if(!bookFile){
+        BOOK_HTML = ""; // no static base — cloud chapters (below) supply all content
+        return;
+      }
       const res = await fetch(bookFile, { cache:"no-store" });
       if(!res.ok) throw new Error("Could not load: " + res.status);
       BOOK_HTML = await res.text();
     }
 
     async function loadChaptersFromCloud(){
-      if(bookId !== "book1") return "";
       try{
         const qy = query(collection(db, "books", bookId, "chapters"), orderBy("chapterNumber", "asc"));
         const snap = await getDocs(qy);
@@ -916,6 +933,75 @@
           : "";
       }catch{
         return "";
+      }
+    }
+
+    // Mirrors the homepage fallback: Book I stays static/admin-independent,
+    // but still shows up correctly as position 1 in the series nav.
+    const STATIC_BOOK1_FALLBACK = { id: "book1", title: "THIS IS US (Book I) — Where We Began", seriesOrder: 1, seriesLabel: "Book I" };
+
+    async function initSeriesNav(){
+      try{
+        const snap = await getDocs(collection(db, "books"));
+        const docsArr = [];
+        snap.forEach(d => docsArr.push({ id: d.id, ...(d.data() || {}) }));
+
+        if(!docsArr.some(d => d.id === "book1")){
+          docsArr.push(STATIC_BOOK1_FALLBACK);
+        }
+
+        docsArr.sort((a, b) => {
+          const ao = Number.isFinite(a.seriesOrder) ? a.seriesOrder : Infinity;
+          const bo = Number.isFinite(b.seriesOrder) ? b.seriesOrder : Infinity;
+          if(ao !== bo) return ao - bo;
+          const at = a.createdAt?.toMillis ? a.createdAt.toMillis() : 0;
+          const bt = b.createdAt?.toMillis ? b.createdAt.toMillis() : 0;
+          return at - bt;
+        });
+
+        // Series nav only makes sense once at least 2 books exist with an assigned order
+        const ordered = docsArr.filter(d => Number.isFinite(d.seriesOrder));
+        if(ordered.length < 2) return;
+
+        const idx = ordered.findIndex(d => d.id === bookId);
+        if(idx === -1) return;
+
+        const prevBook = idx > 0 ? ordered[idx - 1] : null;
+        const nextBook = idx < ordered.length - 1 ? ordered[idx + 1] : null;
+        const current = ordered[idx];
+        const labelFor = (d) => d.seriesLabel || (Number.isFinite(d.seriesOrder) ? `Book ${d.seriesOrder}` : d.title || d.id);
+
+        const setChip = (el, book, prefix) => {
+          if(!el) return;
+          if(!book){ el.style.display = "none"; return; }
+          el.textContent = `${prefix} ${labelFor(book)}`;
+          el.style.display = "";
+          el.onclick = () => { location.href = `read.html?book=${encodeURIComponent(book.id)}`; };
+        };
+
+        setChip(document.getElementById("seriesPrevChip"), prevBook, "◀");
+        setChip(document.getElementById("seriesNextChip"), nextBook, "");
+        const curDesktop = document.getElementById("seriesCurrentChip");
+        if(curDesktop) curDesktop.textContent = labelFor(current);
+        const seriesRow = document.getElementById("seriesNavRow");
+        if(seriesRow) seriesRow.style.display = "flex";
+        // fix next chip label to show arrow after text
+        const nextChipEl = document.getElementById("seriesNextChip");
+        if(nextChipEl && nextBook) nextChipEl.textContent = `${labelFor(nextBook)} ▶`;
+
+        setChip(document.getElementById("mSeriesPrevChip"), prevBook, "◀");
+        const curMobile = document.getElementById("mSeriesCurrentChip");
+        if(curMobile) curMobile.textContent = labelFor(current);
+        const mNextChipEl = document.getElementById("mSeriesNextChip");
+        if(mNextChipEl && nextBook){
+          mNextChipEl.style.display = "";
+          mNextChipEl.textContent = `${labelFor(nextBook)} ▶`;
+          mNextChipEl.onclick = () => { location.href = `read.html?book=${encodeURIComponent(nextBook.id)}`; };
+        }
+        const mSeriesRow = document.getElementById("mSeriesNavRow");
+        if(mSeriesRow) mSeriesRow.style.display = "flex";
+      }catch(e){
+        console.error("initSeriesNav failed", e);
       }
     }
 
@@ -1479,6 +1565,9 @@
         if(cloud && cloud.trim().length){
           BOOK_HTML = BOOK_HTML + "\n\n" + cloud;
         }
+        if(!BOOK_HTML || !BOOK_HTML.trim().length){
+          BOOK_HTML = `<p class="muted">No chapters have been published for this book yet. Check back soon.</p>`;
+        }
       }catch(e){
         BOOK_HTML = `<p class="muted">${escapeHtml(String(e))}</p>`;
       }
@@ -1486,6 +1575,8 @@
       // bump open immediately for guest too
       bumpOpenOnce(null).catch(()=>{});
       countReaderOnce(null).catch(()=>{});
+
+      initSeriesNav().catch(()=>{});
 
       requestAnimationFrame(()=>requestAnimationFrame(()=> paginateAndRender(true)));
 
