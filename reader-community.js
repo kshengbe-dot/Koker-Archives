@@ -895,6 +895,42 @@ const ACH = [
 
 const ACH_MAP = Object.fromEntries(ACH);
 
+// In-memory guard: once a given achievement has been toasted in THIS browser tab,
+// never toast it again this session — even if localStorage/Firestore persistence
+// silently fails (a known issue in mobile Safari private browsing), so a flaky
+// storage write can no longer cause the same popup to repeat on every page turn.
+const __achToastedThisSession = new Set();
+
+function toastAchievementOnce(scopeKey, id, label){
+  const sessionKey = `${scopeKey}:${id}`;
+  if(__achToastedThisSession.has(sessionKey)) return false;
+  __achToastedThisSession.add(sessionKey);
+  toast(label);
+  return true;
+}
+
+// Local (synchronous, instant) guard — used as the FIRST line of defense for
+// every user, signed in or not. This survives page reloads/app backgrounding
+// even if a Firestore write hasn't finished yet, since it never depends on a
+// network round trip completing. Firestore is still written to afterwards so
+// the unlocked list syncs across devices, but it's no longer what decides
+// whether to show the popup on THIS device.
+function readLocalAchGuard(storageKey){
+  try{
+    return new Set(JSON.parse(localStorage.getItem(storageKey) || "[]"));
+  }catch{
+    return new Set();
+  }
+}
+function writeLocalAchGuard(storageKey, set){
+  try{
+    localStorage.setItem(storageKey, JSON.stringify([...set]));
+  }catch{
+    // localStorage unavailable (e.g. private browsing with storage disabled) —
+    // the in-memory session guard above still prevents repeats within this tab.
+  }
+}
+
 export async function trackAchievements({ bookId = "book1", pageIndex = 0, totalPages = 1 } = {}) {
   const now = new Date();
   const hour = now.getHours();
@@ -949,28 +985,39 @@ export async function trackAchievements({ bookId = "book1", pageIndex = 0, total
   const unlocked = rules.filter(([_, fn]) => { try { return !!fn(); } catch { return false; } }).map(([id]) => id);
   if (!unlocked.length) return;
 
-  if (!UID) {
-    unlocked.forEach((id) => toast(`Achievement: ${ACH_MAP[id] || id}`));
-    return;
-  }
+  const scopeKey = UID ? `user:${UID}:${bookId}` : `guest:${bookId}`;
+  const localStorageKey = UID ? `achLocal:user:${UID}:${bookId}` : `ach:${bookId}`;
+  const localHad = readLocalAchGuard(localStorageKey);
+  const newlyUnlocked = unlocked.filter(id => !localHad.has(id));
+  if (!newlyUnlocked.length) return;
 
+  // Toast + mark locally FIRST, instantly, before any network call — this is
+  // what actually stops the repeat-popup bug, since it no longer depends on
+  // a Firestore write finishing before the app gets backgrounded.
+  for (const id of newlyUnlocked) {
+    localHad.add(id);
+    toastAchievementOnce(scopeKey, id, UID ? `Achievement unlocked: ${ACH_MAP[id] || id}` : `Achievement: ${ACH_MAP[id] || id}`);
+  }
+  writeLocalAchGuard(localStorageKey, localHad);
+
+  if (!UID) return;
+
+  // Best-effort sync to Firestore so the unlocked list is visible across devices.
+  // Failure here no longer matters for repeat-popup prevention — see above.
   try {
     const ref = achDoc(bookId, UID);
     const snap = await getDoc(ref);
     const data = snap.exists() ? (snap.data() || {}) : {};
-    const had = new Set(Array.isArray(data.unlocked) ? data.unlocked : []);
-
+    const remoteHad = new Set(Array.isArray(data.unlocked) ? data.unlocked : []);
     let changed = false;
-    for (const id of unlocked) {
-      if (!had.has(id)) {
-        had.add(id);
+    for (const id of newlyUnlocked) {
+      if (!remoteHad.has(id)) {
+        remoteHad.add(id);
         changed = true;
-        toast(`Achievement unlocked: ${ACH_MAP[id] || id}`);
       }
     }
-
     if (changed) {
-      await setDoc(ref, { unlocked: [...had], updatedAt: serverTimestamp() }, { merge: true });
+      await setDoc(ref, { unlocked: [...remoteHad], updatedAt: serverTimestamp() }, { merge: true });
     }
   } catch {}
 }
