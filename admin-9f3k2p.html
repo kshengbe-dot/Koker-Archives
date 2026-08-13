@@ -300,6 +300,17 @@
     </div>
   </div>
 
+  <div class="row2" style="margin-top:10px;">
+    <div>
+      <label>Series Order (1, 2, 3…)</label>
+      <input id="newBookOrder" type="number" min="1" step="1" placeholder="1" />
+    </div>
+    <div>
+      <label>Series Label (shown on card)</label>
+      <input id="newBookSeriesLabel" placeholder="Book I" />
+    </div>
+  </div>
+
   <div style="margin-top:10px;">
     <label>Description</label>
     <textarea id="newBookDesc" placeholder="Short description..."></textarea>
@@ -321,6 +332,19 @@
     <div class="small" id="createBookMsg"></div>
   </div>
 </div>
+
+      <!-- ✅ MANAGE BOOKS -->
+      <div class="card">
+        <h1>Manage Books</h1>
+        <div class="small">
+          Edit series order/label, or delete a book entirely (also removes its chapters, comments, and NEW-badge release entry). Use this instead of the Firebase Console.
+        </div>
+        <div class="row" style="margin-top:10px;">
+          <button class="btn" id="loadBooksBtn">🔄 Load Books</button>
+          <div class="small" id="manageBooksMsg"></div>
+        </div>
+        <div class="preview" id="manageBooksList" style="margin-top:12px;">—</div>
+      </div>
 
       <!-- ✅ NEW BADGE CONTROLLER -->
       <div class="card">
@@ -1768,6 +1792,8 @@ createBookBtn.onclick = async () => {
   const title = document.getElementById("newBookTitle").value.trim();
   const bookId = document.getElementById("newBookId").value.trim();
   const desc = document.getElementById("newBookDesc").value.trim();
+  const seriesOrderRaw = document.getElementById("newBookOrder").value.trim();
+  const seriesLabel = document.getElementById("newBookSeriesLabel").value.trim();
   const frontFile = document.getElementById("frontCoverFile").files[0];
   const backFile = document.getElementById("backCoverFile").files[0];
 
@@ -1775,6 +1801,8 @@ createBookBtn.onclick = async () => {
     createBookMsg.textContent = "Title and Book ID required";
     return;
   }
+
+  const seriesOrder = seriesOrderRaw ? parseInt(seriesOrderRaw, 10) : null;
 
   try {
     // 🔥 Upload FRONT cover
@@ -1799,6 +1827,8 @@ createBookBtn.onclick = async () => {
       description: desc,
       frontCover: frontURL,
       backCover: backURL,
+      seriesOrder: Number.isFinite(seriesOrder) ? seriesOrder : null,
+      seriesLabel: seriesLabel || null,
       createdAt: serverTimestamp(),
       createdBy: UID
     });
@@ -1810,6 +1840,8 @@ createBookBtn.onclick = async () => {
     document.getElementById("newBookTitle").value = "";
     document.getElementById("newBookId").value = "";
     document.getElementById("newBookDesc").value = "";
+    document.getElementById("newBookOrder").value = "";
+    document.getElementById("newBookSeriesLabel").value = "";
     document.getElementById("frontCoverFile").value = "";
     document.getElementById("backCoverFile").value = "";
 
@@ -1818,6 +1850,135 @@ createBookBtn.onclick = async () => {
     createBookMsg.textContent = "Error: " + (e.message || e);
   }
 };
+
+// =========================
+// 🗂️ MANAGE BOOKS
+// =========================
+
+const loadBooksBtn = document.getElementById("loadBooksBtn");
+const manageBooksMsg = document.getElementById("manageBooksMsg");
+const manageBooksList = document.getElementById("manageBooksList");
+
+async function renderManageBooks(){
+  manageBooksMsg.textContent = "Loading…";
+  try{
+    const snap = await getDocs(collection(db, "books"));
+    const items = [];
+    snap.forEach(d => items.push({ id: d.id, ...(d.data() || {}) }));
+
+    items.sort((a, b) => {
+      const ao = Number.isFinite(a.seriesOrder) ? a.seriesOrder : Infinity;
+      const bo = Number.isFinite(b.seriesOrder) ? b.seriesOrder : Infinity;
+      return ao - bo;
+    });
+
+    if(!items.length){
+      manageBooksList.innerHTML = `<div class="small">No books in Firestore yet. (Book I stays static and won't appear here unless you create it too.)</div>`;
+      manageBooksMsg.textContent = "";
+      return;
+    }
+
+    manageBooksList.innerHTML = items.map(b => `
+      <div class="row4" style="border:1px solid var(--stroke); border-radius:12px; padding:10px; margin-bottom:10px;" data-book-row="${escapeHtml(b.id)}">
+        <div>
+          <label>Book ID</label>
+          <input value="${escapeHtml(b.id)}" disabled />
+        </div>
+        <div>
+          <label>Title</label>
+          <input class="mbTitle" value="${escapeHtml(b.title || "")}" />
+        </div>
+        <div>
+          <label>Series Order</label>
+          <input class="mbOrder" type="number" min="1" step="1" value="${Number.isFinite(b.seriesOrder) ? b.seriesOrder : ""}" />
+        </div>
+        <div>
+          <label>Series Label</label>
+          <input class="mbLabel" value="${escapeHtml(b.seriesLabel || "")}" />
+        </div>
+        <div style="grid-column: 1 / -1; display:flex; gap:8px; align-items:center; margin-top:8px; flex-wrap:wrap;">
+          <button class="btn primary mbSave">💾 Save</button>
+          <button class="btn mbDelete" style="border-color: rgba(255,90,90,.5); color:#ff8a8a;">🗑️ Delete Book</button>
+          <div class="small mbRowMsg"></div>
+        </div>
+      </div>
+    `).join("");
+
+    manageBooksList.querySelectorAll("[data-book-row]").forEach(row => {
+      const bookId = row.getAttribute("data-book-row");
+      const rowMsg = row.querySelector(".mbRowMsg");
+
+      row.querySelector(".mbSave").addEventListener("click", async () => {
+        if(UID !== ADMIN_UID){ toast("Access denied."); return; }
+        rowMsg.textContent = "Saving…";
+        try{
+          const title = row.querySelector(".mbTitle").value.trim();
+          const orderRaw = row.querySelector(".mbOrder").value.trim();
+          const label = row.querySelector(".mbLabel").value.trim();
+          await setDoc(doc(db, "books", bookId), {
+            title,
+            seriesOrder: orderRaw ? parseInt(orderRaw, 10) : null,
+            seriesLabel: label || null,
+          }, { merge: true });
+          rowMsg.textContent = "Saved ✅";
+          toast("Book updated ✅");
+        }catch(e){
+          rowMsg.textContent = "Error: " + (e.message || e);
+        }
+      });
+
+      row.querySelector(".mbDelete").addEventListener("click", async () => {
+        if(UID !== ADMIN_UID){ toast("Access denied."); return; }
+        const sure = confirm(`Delete "${bookId}" permanently? This removes the book, all its chapters, and its comments. This cannot be undone.`);
+        if(!sure) return;
+
+        rowMsg.textContent = "Deleting…";
+        try{
+          // Chapters
+          const chSnap = await getDocs(collection(db, "books", bookId, "chapters"));
+          for(const chDoc of chSnap.docs){
+            await deleteDoc(doc(db, "books", bookId, "chapters", chDoc.id));
+          }
+
+          // Comments (+ nested replies/reactions)
+          const cSnap = await getDocs(collection(db, "books", bookId, "comments"));
+          for(const cDoc of cSnap.docs){
+            try{
+              const repSnap = await getDocs(collection(db, "books", bookId, "comments", cDoc.id, "replies"));
+              for(const r of repSnap.docs){
+                await deleteDoc(doc(db, "books", bookId, "comments", cDoc.id, "replies", r.id));
+              }
+            }catch{}
+            try{
+              const reactSnap = await getDocs(collection(db, "books", bookId, "comments", cDoc.id, "reactions"));
+              for(const r of reactSnap.docs){
+                await deleteDoc(doc(db, "books", bookId, "comments", cDoc.id, "reactions", r.id));
+              }
+            }catch{}
+            await deleteDoc(doc(db, "books", bookId, "comments", cDoc.id));
+          }
+
+          // Release entry (NEW badge)
+          try{ await deleteDoc(doc(db, "releases", bookId)); }catch{}
+
+          // The book itself
+          await deleteDoc(doc(db, "books", bookId));
+
+          toast("Book deleted ✅");
+          await renderManageBooks();
+        }catch(e){
+          rowMsg.textContent = "Error: " + (e.message || e);
+        }
+      });
+    });
+
+    manageBooksMsg.textContent = "";
+  }catch(e){
+    manageBooksMsg.textContent = "Error: " + (e.message || e);
+  }
+}
+
+loadBooksBtn.addEventListener("click", renderManageBooks);
     
   </script>
 
