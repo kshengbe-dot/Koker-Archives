@@ -316,18 +316,14 @@
     <textarea id="newBookDesc" placeholder="Short description..."></textarea>
   </div>
 
-  <div class="small" style="margin-top:10px;">
-    Upload your cover images to your GitHub repo's <span class="mono">assets/</span> folder first, then paste their raw URLs below.
-    (No Firebase Storage/billing needed — covers are just hosted alongside your existing images.)
-  </div>
-  <div class="row2" style="margin-top:6px;">
+  <div class="row2" style="margin-top:10px;">
     <div>
-      <label>Front Cover URL</label>
-      <input id="frontCoverUrl" placeholder="./assets/cover-book2.png" />
+      <label>Front Cover</label>
+      <input type="file" id="frontCoverFile" accept="image/*">
     </div>
     <div>
-      <label>Back Cover URL</label>
-      <input id="backCoverUrl" placeholder="./assets/back-book2.png" />
+      <label>Back Cover</label>
+      <input type="file" id="backCoverFile" accept="image/*">
     </div>
   </div>
 
@@ -747,6 +743,9 @@ Use **bold** for bold."></textarea>
       deleteDoc, doc, getDoc, setDoc,
       Timestamp
     } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js";
+    import {
+      getStorage, ref, uploadBytes, getDownloadURL
+    } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-storage.js";
 
     // MUST MATCH reader-community.js
     const ADMIN_UID = "He8L6OfKude0nLHXQcTAjJohK2k1";
@@ -852,6 +851,7 @@ Use **bold** for bold."></textarea>
     const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
     const auth = getAuth(app);
     const db = getFirestore(app);
+    const storage = getStorage(app);
 
     // UI refs
     const statusText = document.getElementById("statusText");
@@ -1798,8 +1798,8 @@ createBookBtn.onclick = async () => {
   const desc = document.getElementById("newBookDesc").value.trim();
   const seriesOrderRaw = document.getElementById("newBookOrder").value.trim();
   const seriesLabel = document.getElementById("newBookSeriesLabel").value.trim();
-  const frontURL = document.getElementById("frontCoverUrl").value.trim();
-  const backURL = document.getElementById("backCoverUrl").value.trim();
+  const frontFile = document.getElementById("frontCoverFile").files[0];
+  const backFile = document.getElementById("backCoverFile").files[0];
 
   if (!title || !bookId) {
     createBookMsg.textContent = "Title and Book ID required";
@@ -1809,8 +1809,23 @@ createBookBtn.onclick = async () => {
   const seriesOrder = seriesOrderRaw ? parseInt(seriesOrderRaw, 10) : null;
 
   try {
-    // 🔥 Save book in Firestore (cover images are hosted in your GitHub repo,
-    // not Firebase Storage — no billing account needed)
+    // 🔥 Upload FRONT cover
+    let frontURL = "";
+    if (frontFile) {
+      const frontRef = ref(storage, `covers/${bookId}/front.jpg`);
+      await uploadBytes(frontRef, frontFile);
+      frontURL = await getDownloadURL(frontRef);
+    }
+
+    // 🔥 Upload BACK cover
+    let backURL = "";
+    if (backFile) {
+      const backRef = ref(storage, `covers/${bookId}/back.jpg`);
+      await uploadBytes(backRef, backFile);
+      backURL = await getDownloadURL(backRef);
+    }
+
+    // 🔥 Save book in Firestore
     await setDoc(doc(db, "books", bookId), {
       title,
       description: desc,
@@ -1831,8 +1846,8 @@ createBookBtn.onclick = async () => {
     document.getElementById("newBookDesc").value = "";
     document.getElementById("newBookOrder").value = "";
     document.getElementById("newBookSeriesLabel").value = "";
-    document.getElementById("frontCoverUrl").value = "";
-    document.getElementById("backCoverUrl").value = "";
+    document.getElementById("frontCoverFile").value = "";
+    document.getElementById("backCoverFile").value = "";
 
   } catch (e) {
     console.error(e);
