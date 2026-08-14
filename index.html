@@ -798,6 +798,16 @@
           <input id="subModalEmail" placeholder="you@example.com" autocomplete="email" />
           <div class="note" id="subModalMsg" style="margin-top:8px;"></div>
         </div>
+        <div>
+          <label>Which books should we email you about?</label>
+          <div id="subModalBooks" style="display:grid; gap:6px; margin-top:6px;">
+            <div class="small" style="opacity:.7;">Loading books…</div>
+          </div>
+        </div>
+        <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+          <input type="checkbox" id="subModalNewBooks" checked style="width:auto;" />
+          <span class="small">Also tell me whenever a brand-new book is published</span>
+        </label>
         <div style="display:flex;gap:10px;flex-wrap:wrap">
           <button class="btn primary" id="subModalBtn" type="button">🔔 Subscribe</button>
           <button class="btn" id="subModalLater" type="button">Maybe later</button>
@@ -997,12 +1007,35 @@
     const subModalLater = document.getElementById("subModalLater");
     const subModalEmail = document.getElementById("subModalEmail");
     const subModalMsg = document.getElementById("subModalMsg");
+    const subModalBooks = document.getElementById("subModalBooks");
+    const subModalNewBooks = document.getElementById("subModalNewBooks");
+
+    function renderSubModalBookChoices(){
+      if(!subModalBooks) return;
+      if(!BOOKS.length){
+        subModalBooks.innerHTML = `<div class="small" style="opacity:.7;">No books available yet.</div>`;
+        return;
+      }
+      subModalBooks.innerHTML = BOOKS.map(b => `
+        <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+          <input type="checkbox" class="subModalBookChk" value="${escapeHtml(b.id)}" checked style="width:auto;" />
+          <span class="small">${escapeHtml(b.seriesLabel ? b.seriesLabel + " — " : "")}${escapeHtml(b.title)}</span>
+        </label>
+      `).join("");
+    }
+
+    function getSubModalSelectedBooks(){
+      return Array.from(document.querySelectorAll(".subModalBookChk"))
+        .filter(chk => chk.checked)
+        .map(chk => chk.value);
+    }
 
     function openSub(){
       subModal.classList.add("show");
       subModal.setAttribute("aria-hidden","false");
       lockScroll();
       subModalMsg.textContent = "";
+      renderSubModalBookChoices();
     }
     function closeSub(){
       subModal.classList.remove("show");
@@ -1147,7 +1180,12 @@
       subBtn.disabled = true;
       subBtn.textContent = "Saving…";
       try{
-        const res = await submitSubscriber({ email: subEmail.value, source:"library_card" });
+        const res = await submitSubscriber({
+          email: subEmail.value,
+          source: "library_card",
+          followedBookIds: BOOKS.map(b => b.id), // quick subscribe = follow everything
+          notifyNewBooks: true
+        });
         subMsg.textContent = res.msg;
         if(res.ok){
           subEmail.value = "";
@@ -1166,7 +1204,12 @@
       subModalBtn.disabled = true;
       subModalBtn.textContent = "Saving…";
       try{
-        const res = await submitSubscriber({ email: subModalEmail.value, source:"library_popup" });
+        const res = await submitSubscriber({
+          email: subModalEmail.value,
+          source: "library_popup",
+          followedBookIds: getSubModalSelectedBooks(),
+          notifyNewBooks: !!subModalNewBooks?.checked
+        });
         subModalMsg.textContent = res.msg;
         if(res.ok){
           subModalEmail.value = "";
