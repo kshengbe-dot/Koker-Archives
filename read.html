@@ -1325,6 +1325,8 @@
       let isSpeaking = false;
       let isPaused = false;
       let autoAdvance = false; // continue to next page after utterance ends
+      let speakQueue = [];
+      let queueIdx = 0;
 
       const FEMALE_HINTS = ["female","samantha","victoria","zira","susan","fiona","tessa","karen","moira","serena","ava","allison","kate","salli","joanna","aria"];
       const MALE_HINTS   = ["male","daniel","fred","alex","david","mark","tom","james","george","guy","matthew","brian","eric"];
@@ -1362,6 +1364,28 @@
         return (tmp.textContent || tmp.innerText || "").replace(/\s+/g, " ").trim();
       }
 
+      // Speaking one giant block of text per page causes stutter/cutoffs on many
+      // browsers (and Chrome silently kills utterances longer than ~15s). Splitting
+      // into sentence-sized chunks and queuing them back-to-back sounds smoother
+      // and sidesteps both issues.
+      function splitIntoChunks(text){
+        const rough = text.match(/[^.!?]+[.!?]+(\s+|$)|[^.!?]+$/g) || [text];
+        const chunks = [];
+        let buffer = "";
+        for(let piece of rough){
+          piece = piece.trim();
+          if(!piece) continue;
+          if((buffer ? buffer + " " + piece : piece).length < 180){
+            buffer = buffer ? buffer + " " + piece : piece;
+          }else{
+            if(buffer) chunks.push(buffer);
+            buffer = piece;
+          }
+        }
+        if(buffer) chunks.push(buffer);
+        return chunks.length ? chunks : [text];
+      }
+
       function updateVoiceLabels(){
         const label = voiceGender === "male" ? "Male" : "Female";
         const a = document.getElementById("voiceLabel");
@@ -1382,6 +1406,8 @@
         autoAdvance = false;
         isSpeaking = false;
         isPaused = false;
+        speakQueue = [];
+        queueIdx = 0;
         synth.cancel();
         updateListenLabels();
       }
@@ -1394,18 +1420,27 @@
           if(continueReading) advanceAndSpeak();
           return;
         }
-        const utter = new SpeechSynthesisUtterance(text);
-        const v = pickVoice(voiceGender);
-        if(v) utter.voice = v;
-        utter.rate = 1;
-        utter.pitch = voiceGender === "male" ? 0.92 : 1.05;
+        speakQueue = splitIntoChunks(text);
+        queueIdx = 0;
+        speakNextChunk(continueReading);
+      }
 
-        utter.onstart = () => { isSpeaking = true; isPaused = false; updateListenLabels(); };
-        utter.onend = () => {
+      function speakNextChunk(continueReading){
+        if(queueIdx >= speakQueue.length){
           isSpeaking = false;
           updateListenLabels();
           if(autoAdvance) advanceAndSpeak();
-        };
+          return;
+        }
+        const chunk = speakQueue[queueIdx++];
+        const utter = new SpeechSynthesisUtterance(chunk);
+        const v = pickVoice(voiceGender);
+        if(v) utter.voice = v;
+        utter.rate = 0.97;
+        utter.pitch = voiceGender === "male" ? 0.94 : 1.03;
+
+        utter.onstart = () => { isSpeaking = true; isPaused = false; updateListenLabels(); };
+        utter.onend = () => { speakNextChunk(continueReading); };
         utter.onerror = () => { isSpeaking = false; updateListenLabels(); };
 
         synth.speak(utter);
