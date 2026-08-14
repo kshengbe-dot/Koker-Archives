@@ -251,7 +251,7 @@ export async function renderAnnouncements({ mountId = "announceMount", max = 4 }
 }
 
 // ---------------- subscribers ----------------
-export async function submitSubscriber({ email, source = "library" } = {}){
+export async function submitSubscriber({ email, source = "library", followedBookIds = [], notifyNewBooks = true } = {}){
   const em = String(email ?? "").trim();
   const lower = normalizeEmail(em);
 
@@ -265,17 +265,34 @@ export async function submitSubscriber({ email, source = "library" } = {}){
     return { ok:false, msg:"Please sign in first, then subscribe." };
   }
 
+  const cleanFollowed = Array.isArray(followedBookIds)
+    ? [...new Set(followedBookIds.filter(id => typeof id === "string" && id.trim()))]
+    : [];
+
   try{
     const existing = await getDocs(
       query(collection(db,"subscribers"), where("emailLower","==", lower), limit(1))
     );
-    if(!existing.empty) return { ok:true, msg:"You’re already subscribed ✅" };
+
+    if(!existing.empty){
+      // Already subscribed — update their notification preferences instead of
+      // silently ignoring the choices they just made on this visit.
+      const existingDoc = existing.docs[0];
+      await setDoc(doc(db, "subscribers", existingDoc.id), {
+        followedBookIds: cleanFollowed,
+        notifyNewBooks: !!notifyNewBooks,
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+      return { ok:true, msg:"Preferences updated ✅" };
+    }
 
     await addDoc(collection(db,"subscribers"), {
       email: em,
       emailLower: lower,
       source,
       uid: u.uid,
+      followedBookIds: cleanFollowed,
+      notifyNewBooks: !!notifyNewBooks,
       createdAt: serverTimestamp()
     });
 
